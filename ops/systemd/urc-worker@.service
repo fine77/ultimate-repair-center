@@ -1,0 +1,16 @@
+[Unit]
+Description=URC Worker (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/ultimate-repair-center
+ExecStart=/usr/bin/python3 -m urc.worker --agent %i --base-dir /root/ultimate-repair-center --interval-sec 15
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

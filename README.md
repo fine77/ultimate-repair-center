@@ -1,52 +1,48 @@
 # Ultimate Repair Center (URC)
 
-URC is the operational repair framework for PlanetOnyx runtime stability.
+URC is a restore-only incident handling framework for runtime operations.
 
 ## Mission
-Keep systems in their documented current state ("IST-Zustand") with fast, deterministic incident handling and minimal human escalation.
+Return services to the accepted current run-state quickly and deterministically.
 
-## Scope
-- Service health detection (containers, system services, endpoint checks)
-- Automated incident ticket creation and prioritization
-- Host-aware routing of incidents to the correct execution target
-- Controlled repair execution with guardrails (restore-only, no redesign)
-- Queue-based worker execution (one ticket at a time per worker)
-- Runtime observability integration (status, queues, failed/open/completed)
+## Included in this repository
+- Queue-based worker engine (one ticket at a time per worker)
+- Control API for plan submission and status
+- Multi-model cloud routing via Ollama API-compatible endpoints
+- Restore-only executor integration hook
+- Systemd unit templates for API and workers
 
-## Explicitly Out of Scope
-- Knowledgebase content and learning datasets
-- Security strategy/compliance frameworks and security hardening policies
-- Firewall design, firewall rule management, or network policy redesign
+## Explicitly excluded
+- Knowledgebase modules and KB data flows
+- Security/compliance automation modules
+- Firewall/policy management and network redesign
 
-## Design Principles
-- Restore-only: repairs return services to the latest accepted run-state
-- No surprise changes: no ad-hoc port/policy redesign during incidents
-- Full-chain recovery for coupled stacks (example: gluetun-dependent chains)
-- Host ownership first: incidents must be handled on the owning host
-- Priority aware, but finish current work before preemption
+## Layout
+- `src/urc/`: runtime code (`control_api`, `worker`, `orchestrator`, `ollama_client`)
+- `configs/`: model, agent, issue and schema config
+- `scripts/`: helper scripts (plan submit)
+- `ops/systemd/`: service templates
+- `runtime/`: queue, plans, done/failed, heartbeat
 
-## Core Components
-- `tickets/`: normalized incident/task definitions
-- `workers/`: worker profiles and execution contracts
-- `runbooks/`: deterministic repair procedures
-- `ops/`: host/service ownership maps and queue policy
-- `reports/`: execution outputs and operational logs
+## Quick Start
+```bash
+cd /root/ultimate-repair-center
+PYTHONPATH=src python3 -m urc.control_api --base-dir /root/ultimate-repair-center --bind 127.0.0.1 --port 8765
+```
 
-## Ticket Lifecycle
-1. Detect event from health checks, logs, or SLO/SLI triggers
-2. Classify and assign severity/priority
-3. Route to owning host and responsible worker
-4. Execute repair plan (restore-only)
-5. Verify service recovery
-6. Close ticket or escalate to human operator
+In another shell:
+```bash
+cd /root/ultimate-repair-center
+PYTHONPATH=src python3 -m urc.worker --agent sre_diagnoser --base-dir /root/ultimate-repair-center --interval-sec 10
+```
+
+Submit a ticket:
+```bash
+cd /root/ultimate-repair-center
+URC_API_URL=http://127.0.0.1:8765 ISSUE_TYPE=manual_plan ./scripts/submit_plan.sh "Test restore plan"
+```
 
 ## Update Policy
-All platform changes are tracked in:
-- `CHANGELOG.md` (human-readable release stream)
-- Git commit history (atomic technical deltas)
-
-## Initial Milestones
-- M1: Baseline queue/worker model and host ownership routing
-- M2: Deterministic runbooks per service class
-- M3: Grafana-facing operational status model (open/failed/completed)
-- M4: Cross-host consistency and failure-domain isolation
+All updates must be posted in:
+- `CHANGELOG.md`
+- Git commit history on `main`

@@ -1,0 +1,39 @@
+{
+  "issue_profiles": {
+    "manual_plan": {
+      "description": "Generic restore-only incident plan",
+      "agents": ["sre_diagnoser", "documentarian"],
+      "suggested_executor_action": "repair-health-check",
+      "function_plan": {"sre_diagnoser": "build_restore_plan", "documentarian": "build_incident_summary"},
+      "model_strategy": {"default_alias_chain": ["qwen_general", "llama_general", "gemma_general"]}
+    },
+    "tailnet_degraded": {
+      "description": "Tailnet instability or route degradation",
+      "agents": ["sre_diagnoser", "performance_analyst"],
+      "suggested_executor_action": "tailnet",
+      "function_plan": {"sre_diagnoser": "build_restore_plan", "performance_analyst": "find_bottleneck"},
+      "model_strategy": {"default_alias_chain": ["qwen_general", "llama_general", "mistral_general"]}
+    },
+    "ultimatevps_bad_gateway": {
+      "description": "ARR/Gluetun chain bad gateway; full-chain restore required",
+      "agents": ["sre_diagnoser", "performance_analyst"],
+      "suggested_executor_action": "ultimatevps",
+      "function_plan": {"sre_diagnoser": "build_restore_plan", "performance_analyst": "find_bottleneck"},
+      "model_strategy": {"default_alias_chain": ["qwen_general", "mistral_general", "llama_general"]}
+    },
+    "observability_nodata": {
+      "description": "No data in runtime observability",
+      "agents": ["sre_diagnoser", "performance_analyst", "documentarian"],
+      "suggested_executor_action": "observability",
+      "function_plan": {"sre_diagnoser": "build_restore_plan", "performance_analyst": "find_bottleneck", "documentarian": "build_incident_summary"},
+      "model_strategy": {"default_alias_chain": ["qwen_general", "mistral_general", "gemma_general"]}
+    },
+    "docker_sock_permission_denied": {
+      "description": "Worker cannot access Docker socket",
+      "agents": ["sre_diagnoser", "documentarian"],
+      "suggested_executor_action": null,
+      "function_plan": {"sre_diagnoser": "build_restore_plan", "documentarian": "build_incident_summary"},
+      "model_strategy": {"default_alias_chain": ["qwen_general", "llama_general", "gemma_general"]}
+    }
+  }
+}

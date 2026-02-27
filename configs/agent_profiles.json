@@ -1,0 +1,37 @@
+{
+  "agents": {
+    "sre_diagnoser": {
+      "role": "SRE incident analysis and restore-plan author",
+      "model_alias": "qwen_general",
+      "temperature": 0.2,
+      "max_tokens": 900,
+      "write_access": false,
+      "functions": {"build_restore_plan": {"description": "Build restore-only plan"}}
+    },
+    "performance_analyst": {
+      "role": "Performance bottleneck and SLA impact analysis",
+      "model_alias": "mistral_general",
+      "temperature": 0.2,
+      "max_tokens": 900,
+      "write_access": false,
+      "functions": {"find_bottleneck": {"description": "Find bottleneck"}}
+    },
+    "documentarian": {
+      "role": "Incident summary and change evidence writer",
+      "model_alias": "gemma_general",
+      "temperature": 0.2,
+      "max_tokens": 1000,
+      "write_access": false,
+      "functions": {"build_incident_summary": {"description": "Create concise incident report"}}
+    },
+    "executor": {
+      "role": "Whitelisted restore action executor",
+      "model_alias": "qwen_coder",
+      "temperature": 0.0,
+      "max_tokens": 500,
+      "write_access": true,
+      "allowed_actions": ["tailnet", "ultimatevps", "observability", "repair-health-check"],
+      "functions": {"run_whitelisted_action": {"description": "Execute one allowed restore action"}}
+    }
+  }
+}

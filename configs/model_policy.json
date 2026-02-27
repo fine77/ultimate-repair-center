@@ -1,0 +1,9 @@
+{
+  "allowed_models": {
+    "qwen_general": "qwen3.5:397b",
+    "qwen_coder": "qwen3-coder-next",
+    "llama_general": "deepseek-v3.2",
+    "mistral_general": "glm-5",
+    "gemma_general": "kimi-k2.5"
+  }
+}

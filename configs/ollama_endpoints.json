@@ -1,0 +1,6 @@
+{
+  "endpoints": [
+    {"name": "cloud-proxy-primary", "base_url": "http://127.0.0.1:11435", "timeout_sec": 95, "enabled": true},
+    {"name": "cloud-direct-fallback", "base_url": "https://ollama.com/api", "timeout_sec": 90, "enabled": true, "api_key_env": "OLLAMA_API_KEY"}
+  ]
+}

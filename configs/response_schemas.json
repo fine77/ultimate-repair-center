@@ -1,0 +1,27 @@
+{
+  "default": {
+    "summary": "string",
+    "risk": "low|medium|high|critical",
+    "confidence": "0.0-1.0",
+    "actions": [{"step": "string", "reason": "string", "validation": "string"}],
+    "notes": ["string"]
+  },
+  "agent_function": {
+    "sre_diagnoser.build_restore_plan": {
+      "ordered_actions": [{"step": "string", "target": "string", "validation": "string"}],
+      "rollback_hint": "string",
+      "risk_class": "low|medium|high|critical"
+    },
+    "performance_analyst.find_bottleneck": {
+      "bottleneck": "cpu|memory|storage|network|mixed|unknown",
+      "impact_scope": "single_service|stack|platform",
+      "confidence": "0.0-1.0",
+      "signals": ["string"]
+    },
+    "documentarian.build_incident_summary": {
+      "summary": "string",
+      "timeline": ["string"],
+      "resolution": "string"
+    }
+  }
+}
