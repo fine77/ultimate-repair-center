@@ -1,74 +1,74 @@
 # Ultimate Repair Center (URC)
 
-URC ist ein **restore-only** Incident-Framework fuer den laufenden Betrieb.
-Ziel ist nicht Redesign, sondern die schnelle Rueckkehr in den freigegebenen IST-Zustand.
+URC is a **restore-only** incident handling framework for runtime operations.  
+Its goal is not redesign, but fast and deterministic recovery to the accepted current run state.
 
-## Zielbild
-- Tickets automatisch erfassen, priorisieren und in Queues legen.
-- Pro Worker nur **ein Ticket gleichzeitig** verarbeiten.
-- Diagnosen mit Cloud-Modellen erzeugen.
-- Nur freigegebene Restore-Aktionen durch den Executor erlauben.
-- Ergebnis als `done` oder `failed` nachvollziehbar ablegen.
+## Target Operating Model
+- Create and route incident tickets into queues.
+- Process **one ticket at a time per worker**.
+- Run cloud-model diagnostics through a controlled orchestration layer.
+- Allow only whitelisted restore actions via the executor.
+- Persist outcomes as auditable `done` or `failed` artifacts.
 
-## Was URC bewusst nicht macht
-- Keine Knowledgebase-Module und keine KB-Datenpflege.
-- Keine Security-/Compliance-Automation.
-- Keine Firewall-/Policy-Aenderungen und kein Netzwerk-Redesign.
+## Explicitly Out of Scope
+- Knowledgebase modules and KB lifecycle.
+- Security/compliance automation workflows.
+- Firewall/policy management and network redesign.
 
-## Architektur in 30 Sekunden
-1. Ein Plan kommt ueber die Control API (`POST /v1/plan`) rein.
-2. URC erzeugt daraus Agent-Tickets in `runtime/queues/<agent>/inbox/`.
-3. Worker holen Tickets nach Prioritaet (`critical` -> `low`).
-4. Orchestrator waehlt Modellkette und Funktionsschema.
-5. Ergebnis landet in `runtime/queues/<agent>/done/` sowie global in `runtime/done/`.
-6. Fehler landen in `runtime/queues/<agent>/failed/` und `runtime/failed/`.
+## Architecture in 30 Seconds
+1. A plan is submitted via Control API (`POST /v1/plan`).
+2. URC creates agent tickets in `runtime/queues/<agent>/inbox/`.
+3. Workers consume tickets by priority (`critical` -> `low`).
+4. The orchestrator selects model fallback chain and output schema.
+5. Results are written to agent-local and global `done` stores.
+6. Errors are written to agent-local and global `failed` stores.
 
-## Repository-Struktur
-- `src/urc/`: Runtime-Code (`control_api`, `worker`, `orchestrator`, `ollama_client`, `executor`, `cli`)
-- `configs/`: Agent-, Issue-, Modell- und Antwortschemas
-- `scripts/`: Operator-Helfer (`submit_plan.sh`)
-- `ops/systemd/`: Service-Templates fuer API und Worker
-- `runtime/`: Laufzeitdaten (Queues, Plans, Done/Failed, Heartbeat)
+## Repository Layout
+- `src/urc/`: runtime code (`control_api`, `worker`, `orchestrator`, `ollama_client`, `executor`, `cli`)
+- `configs/`: agent, issue, model, endpoint, and response schema configs
+- `scripts/`: operator helpers (`submit_plan.sh`)
+- `ops/systemd/`: systemd unit templates (API + workers)
+- `runtime/`: runtime state (queues, plans, done/failed, heartbeat)
 
-## Konfigurationsmodell
+## Configuration Model
 - `configs/agent_profiles.json`:
-  - Rollen, Modell-Aliase, Token-Limits, allowed actions (Executor)
+  - roles, model aliases, token limits, executor allowed actions
 - `configs/issue_profiles.json`:
-  - Issue-Typ -> Agenten, Modellstrategie, vorgeschlagene Executor-Aktion
+  - issue type -> agents, model strategy, suggested executor action
 - `configs/model_policy.json`:
-  - Alias -> konkretes Cloud-Modell
+  - alias -> concrete cloud model
 - `configs/ollama_endpoints.json`:
-  - Endpoint-Fallbacks inkl. `OLLAMA_API_KEY`
+  - endpoint fallback chain and `OLLAMA_API_KEY` integration
 - `configs/response_schemas.json`:
-  - Erwartete JSON-Struktur je Agent-Funktion
+  - expected JSON output shape per agent function
 
-## Lokaler Start (manuell)
-Control API:
+## Local Startup (Manual)
+Start Control API:
 ```bash
 cd /root/ultimate-repair-center
 PYTHONPATH=src python3 -m urc.control_api --base-dir /root/ultimate-repair-center --bind 127.0.0.1 --port 8765
 ```
 
-Worker (Beispiel):
+Start one worker:
 ```bash
 cd /root/ultimate-repair-center
 PYTHONPATH=src python3 -m urc.worker --agent sre_diagnoser --base-dir /root/ultimate-repair-center --interval-sec 10
 ```
 
-Weiteren Worker starten:
+Start another worker:
 ```bash
 cd /root/ultimate-repair-center
 PYTHONPATH=src python3 -m urc.worker --agent performance_analyst --base-dir /root/ultimate-repair-center --interval-sec 10
 ```
 
-## Ticket einreichen
-Per Helper-Script:
+## Submit Tickets
+Via helper script:
 ```bash
 cd /root/ultimate-repair-center
 URC_API_URL=http://127.0.0.1:8765 ISSUE_TYPE=manual_plan ./scripts/submit_plan.sh "Test restore plan"
 ```
 
-Per CLI:
+Via CLI:
 ```bash
 cd /root/ultimate-repair-center
 PYTHONPATH=src python3 -m urc.cli submit \
@@ -79,17 +79,17 @@ PYTHONPATH=src python3 -m urc.cli submit \
   --target-agents sre_diagnoser,performance_analyst,documentarian
 ```
 
-## API-Endpunkte
-- `GET /healthz`: Basis-Health der Control API
-- `GET /v1/status`: Queue- und Agent-Status
-- `POST /v1/plan`: Plan erstellen und Tickets verteilen
+## API Endpoints
+- `GET /healthz`: control API health
+- `GET /v1/status`: queue and worker status
+- `POST /v1/plan`: create plan and distribute agent tickets
 
-## Systemd-Betrieb
-Templates:
+## Systemd Operation
+Unit templates:
 - `ops/systemd/urc-control-api.service`
 - `ops/systemd/urc-worker@.service`
 
-Typischer Betrieb:
+Typical activation:
 ```bash
 sudo cp ops/systemd/urc-control-api.service /etc/systemd/system/
 sudo cp ops/systemd/urc-worker@.service /etc/systemd/system/
@@ -100,19 +100,19 @@ sudo systemctl enable --now urc-worker@performance_analyst.service
 sudo systemctl enable --now urc-worker@documentarian.service
 ```
 
-## Executor-Regeln
-- Executor fuehrt nur Aktionen aus, die in `allowed_actions` stehen.
-- Executor-Aktion wird ueber Issue-Profile vorgeschlagen.
-- Apply-Flag ist explizit und darf nicht implizit aktiviert werden.
-- Betriebsprinzip bleibt: restore-only statt redesign.
+## Executor Rules
+- The executor runs only actions listed in `allowed_actions`.
+- Executor actions are driven by issue profile mapping.
+- `apply` must be explicit and never implicit.
+- Operating contract remains restore-only.
 
-## Betriebsdaten und Monitoring
-- Offene Tickets: `runtime/queues/*/inbox/*.json`
-- Erledigt: `runtime/done/*.json`
-- Fehler: `runtime/failed/*.json`
-- Heartbeat: `runtime/heartbeat/*.json`
+## Runtime Data and Monitoring Paths
+- Open tickets: `runtime/queues/*/inbox/*.json`
+- Completed: `runtime/done/*.json`
+- Failed: `runtime/failed/*.json`
+- Heartbeats: `runtime/heartbeat/*.json`
 
-## Release- und Update-Regel
-Alle Aenderungen werden in zwei Stellen gepflegt:
+## Release and Update Policy
+Every change must be reflected in:
 - `CHANGELOG.md`
-- Git-Historie auf `main`
+- Git commit history on `main`
