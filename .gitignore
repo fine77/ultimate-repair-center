@@ -1,0 +1,9 @@
+# Runtime artifacts
+reports/
+*.log
+*.tmp
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
