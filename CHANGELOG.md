@@ -17,3 +17,11 @@ All notable changes to URC are documented in this file.
 - Worker runtime with priority handling and one-ticket-at-a-time execution
 - Sanitized config set without KB/security/firewall modules
 - Systemd templates for URC API and workers
+
+## [0.2.1] - 2026-02-28
+### Added
+- Worker stale-lock recovery for `runtime/queues/*/inbox/*.json.<agent>.lock` with configurable threshold (`URC_LOCK_STALE_SEC`, default 180s)
+- Worker event logging entry `stale_lock_recovered` in `runtime/logs/events.jsonl`
+
+### Changed
+- Runtime documentation now includes lock-file path and event log path

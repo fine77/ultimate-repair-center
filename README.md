@@ -108,9 +108,14 @@ sudo systemctl enable --now urc-worker@documentarian.service
 
 ## Runtime Data and Monitoring Paths
 - Open tickets: `runtime/queues/*/inbox/*.json`
+- Claimed/locked: `runtime/queues/*/inbox/*.json.<agent>.lock`
 - Completed: `runtime/done/*.json`
 - Failed: `runtime/failed/*.json`
 - Heartbeats: `runtime/heartbeat/*.json`
+- Worker events: `runtime/logs/events.jsonl`
+
+Worker stale-lock self-heal:
+- `URC_LOCK_STALE_SEC` (default `180`) controls when old `*.lock` files are recovered back to queue JSON.
 
 ## Release and Update Policy
 Every change must be reflected in:

@@ -45,6 +45,34 @@ def ticket_key(path: Path) -> tuple[int, float, str]:
     return (PRIO_ORDER.get(prio, 2), mt, path.name)
 
 
+def append_event(events_file: Path, payload: dict[str, Any]) -> None:
+    events_file.parent.mkdir(parents=True, exist_ok=True)
+    with events_file.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+
+def recover_stale_locks(inbox: Path, stale_sec: int) -> int:
+    now = time.time()
+    recovered = 0
+    for lock in inbox.glob("*.json.*.lock"):
+        try:
+            age = now - lock.stat().st_mtime
+            if age < stale_sec:
+                continue
+            name = lock.name
+            # PLAN-...json.agent.lock -> PLAN-...json
+            ticket_name = name.rsplit(".", 2)[0]
+            ticket_path = lock.with_name(ticket_name)
+            if ticket_path.exists():
+                lock.unlink(missing_ok=True)
+            else:
+                lock.replace(ticket_path)
+            recovered += 1
+        except Exception:
+            continue
+    return recovered
+
+
 def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
     runtime = base_dir / "runtime"
     inbox = runtime / "queues" / agent / "inbox"
@@ -54,6 +82,8 @@ def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
     global_failed = runtime / "failed"
     heartbeat = runtime / "heartbeat"
     logs = runtime / "logs"
+    events = logs / "events.jsonl"
+    lock_stale_sec = int(os.getenv("URC_LOCK_STALE_SEC", "180"))
     for p in (inbox, done, failed, global_done, global_failed, heartbeat, logs):
         p.mkdir(parents=True, exist_ok=True)
 
@@ -62,6 +92,17 @@ def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
     while True:
         orch = AgentOrchestrator()
         hb = {"agent": agent, "host": host, "timestamp_utc": utc_now(), "status": "idle"}
+        recovered = recover_stale_locks(inbox, lock_stale_sec)
+        if recovered:
+            append_event(
+                events,
+                {
+                    "ts_utc": utc_now(),
+                    "agent": agent,
+                    "event": "stale_lock_recovered",
+                    "count": recovered,
+                },
+            )
         files = sorted(inbox.glob("*.json"), key=ticket_key)
         processed = 0
         for f in files:
