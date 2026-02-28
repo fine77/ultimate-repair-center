@@ -28,6 +28,7 @@ Its goal is not redesign, but fast and deterministic recovery to the accepted cu
 - `configs/`: agent, issue, model, endpoint, and response schema configs
 - `scripts/`: operator helpers (`submit_plan.sh`)
 - `ops/systemd/`: systemd unit templates (API + workers)
+- `docs/`: operating model and incident runbooks
 - `runtime/`: runtime state (queues, plans, done/failed, heartbeat)
 
 ## Configuration Model
@@ -121,3 +122,8 @@ Worker stale-lock self-heal:
 Every change must be reflected in:
 - `CHANGELOG.md`
 - Git commit history on `main`
+
+## Incident Documentation
+- Lock recovery runbook: `docs/INCIDENT_LOCK_RECOVERY.md`
+- Operating model: `docs/OPERATING_MODEL.md`
+- Update workflow: `docs/UPDATE_PROCESS.md`

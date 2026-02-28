@@ -41,3 +41,6 @@ URC controls incident handling for runtime operations and restores service avail
 ## Update Contract
 - Every operational change must be recorded in `CHANGELOG.md`.
 - Release notes summarize impacts, rollback path, and verification checks.
+
+## Runbook Reference
+- Stuck queue lock handling: `docs/INCIDENT_LOCK_RECOVERY.md`

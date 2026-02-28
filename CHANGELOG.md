@@ -22,6 +22,8 @@ All notable changes to URC are documented in this file.
 ### Added
 - Worker stale-lock recovery for `runtime/queues/*/inbox/*.json.<agent>.lock` with configurable threshold (`URC_LOCK_STALE_SEC`, default 180s)
 - Worker event logging entry `stale_lock_recovered` in `runtime/logs/events.jsonl`
+- Dedicated incident runbook: `docs/INCIDENT_LOCK_RECOVERY.md`
 
 ### Changed
 - Runtime documentation now includes lock-file path and event log path
+- README and operating model now reference lock-recovery incident documentation
