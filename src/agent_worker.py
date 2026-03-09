@@ -204,6 +204,13 @@ def _evaluate_completion(
     if payload.get("ok") is False:
         return (False, "result_ok_false")
 
+    # Reject false-positive "done" tickets that contain no actionable payload.
+    # At least analysis output or executor result must be present.
+    has_analysis = isinstance(payload.get("analysis"), list) and len(payload.get("analysis") or []) > 0
+    has_executor = isinstance(payload.get("executor"), dict)
+    if not has_analysis and not has_executor:
+        return (False, "empty_result_payload")
+
     executor = payload.get("executor")
     if isinstance(executor, dict) and executor.get("ok") is False:
         action = str(executor.get("action") or "").strip() or "unknown_action"
