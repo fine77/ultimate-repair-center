@@ -23,9 +23,10 @@ class OllamaRouter:
             ep = next(self._cycler)
             base_url = ep["base_url"].rstrip("/")
             timeout = float(ep.get("timeout_sec", 90))
-            url = f"{base_url}/api/chat"
             if base_url.endswith("/api"):
-                url = f"{base_url}/chat"
+                candidate_urls = [f"{base_url}/chat", f"{base_url}/api/chat"]
+            else:
+                candidate_urls = [f"{base_url}/api/chat", f"{base_url}/chat"]
             model_name = model
             if base_url.endswith("/api") and model_name.endswith(":cloud"):
                 model_name = model_name[: -len(":cloud")]
@@ -35,24 +36,35 @@ class OllamaRouter:
                 "stream": False,
                 "options": {"temperature": temperature, "num_predict": max_tokens},
             }
-            for retry in range(3):
-                try:
-                    headers = {"Content-Type": "application/json"}
-                    api_key_env = ep.get("api_key_env")
-                    if isinstance(api_key_env, str) and api_key_env.strip():
-                        api_key = os.getenv(api_key_env.strip(), "").strip()
-                        if api_key:
-                            headers["Authorization"] = f"Bearer {api_key}"
-                    req = Request(url=url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-                    data = await asyncio.to_thread(self._read_json, req, timeout)
-                    return data.get("message", {}).get("content", ""), model
-                except Exception as exc:  # noqa: BLE001
-                    msg = str(exc).lower()
-                    if any(x in msg for x in ("429", "timed out", "timeout")) and retry < 2:
-                        await asyncio.sleep(0.5 * (2 ** retry))
-                        continue
-                    errors.append(f"model={model} endpoint={base_url}: {exc}")
+            endpoint_error: str | None = None
+            for url in candidate_urls:
+                for retry in range(3):
+                    try:
+                        headers = {"Content-Type": "application/json"}
+                        api_key_env = ep.get("api_key_env")
+                        if isinstance(api_key_env, str) and api_key_env.strip():
+                            api_key = os.getenv(api_key_env.strip(), "").strip()
+                            if api_key:
+                                headers["Authorization"] = f"Bearer {api_key}"
+                        req = Request(url=url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+                        data = await asyncio.to_thread(self._read_json, req, timeout)
+                        return data.get("message", {}).get("content", ""), model
+                    except Exception as exc:  # noqa: BLE001
+                        msg = str(exc).lower()
+                        if any(x in msg for x in ("429", "timed out", "timeout", "http 500")) and retry < 2:
+                            await asyncio.sleep(0.5 * (2 ** retry))
+                            continue
+                        endpoint_error = f"model={model} endpoint={base_url} url={url}: {exc}"
+                        if "http 404" in msg and ("/api/chat" in url or "/chat" in url):
+                            break
+                        retry = 3
+                        break
+                if endpoint_error and "http 404" in endpoint_error.lower():
+                    continue
+                if endpoint_error:
                     break
+            if endpoint_error:
+                errors.append(endpoint_error)
             await asyncio.sleep(0.2)
         raise RuntimeError("All endpoints failed for model " + model + ": " + " | ".join(errors))
 

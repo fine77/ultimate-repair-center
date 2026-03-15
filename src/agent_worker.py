@@ -226,6 +226,34 @@ def _evaluate_completion(
     return (True, "verified_success")
 
 
+def _derive_issue_type(
+    *,
+    ticket: dict[str, Any] | None,
+    payload: dict[str, Any] | None,
+    plans_dir: Path,
+) -> str:
+    if isinstance(ticket, dict):
+        raw = str(ticket.get("issue_type") or "").strip()
+        if raw:
+            return raw
+    if isinstance(payload, dict):
+        raw = str(payload.get("issue_type") or "").strip()
+        if raw:
+            return raw
+    if isinstance(ticket, dict):
+        plan_id = str(ticket.get("plan_id") or "").strip()
+        if plan_id:
+            plan_file = plans_dir / f"{plan_id}.json"
+            try:
+                plan = _read_json(plan_file)
+                raw = str(plan.get("issue_type") or "").strip()
+                if raw:
+                    return raw
+            except Exception:
+                pass
+    return "unknown"
+
+
 _PLAN_TICKET_RE = re.compile(r"^(PLAN-\d{8}T\d{6}Z)-\d{2}-([a-z_]+)\.json$")
 _PRIO_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
@@ -267,6 +295,7 @@ def _ticket_priority_key(path: Path) -> tuple[int, float, str]:
 
 def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
     runtime = base_dir / "runtime"
+    plans_dir = runtime / "plans"
     queue_root = runtime / "queues" / agent
     inbox = queue_root / "inbox"
     done = queue_root / "done"
@@ -503,7 +532,19 @@ def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
                 if priority not in _PRIO_ORDER:
                     priority = "medium"
 
-                mode = str(ticket.get("mode") or "ask").strip().lower()
+                mode_raw = str(ticket.get("mode") or "").strip().lower()
+                has_issue_shape = bool(str(ticket.get("issue_type") or "").strip()) and bool(
+                    str(ticket.get("summary") or "").strip()
+                )
+                if mode_raw in {"issue", "ist_only_restore", "restore", "incident"}:
+                    mode = "issue"
+                elif mode_raw in {"ask", "question", "task"}:
+                    mode = "ask"
+                elif has_issue_shape and not str(ticket.get("task") or "").strip():
+                    # Defensive compatibility for malformed/reconstructed tickets.
+                    mode = "issue"
+                else:
+                    mode = "ask"
                 if mode == "issue":
                     issue_type = str(ticket.get("issue_type") or "").strip()
                     summary = str(ticket.get("summary") or "").strip()
@@ -625,6 +666,10 @@ def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
                 out = {
                     "ticket_file": ticket_file.name,
                     "agent": agent,
+                    "plan_id": str(ticket.get("plan_id", "")) if isinstance(ticket, dict) else "",
+                    "issue_type": str(ticket.get("issue_type", "")) if isinstance(ticket, dict) else "",
+                    "priority": str(ticket.get("priority", "medium")) if isinstance(ticket, dict) else "medium",
+                    "retry_count": int(ticket.get("retry_count", 0)) if isinstance(ticket, dict) else 0,
                     "started_at_utc": started,
                     "finished_at_utc": _utc_now(),
                     "ok": processing_ok,
@@ -636,9 +681,13 @@ def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
                 )
                 out["ok"] = completion_ok
                 out["completion_reason"] = completion_reason
-                out["unresolved_signature"] = (
-                    f"{ticket.get('issue_type','unknown')}::{completion_reason}"
+                issue_type_for_signature = _derive_issue_type(
+                    ticket=ticket if isinstance(ticket, dict) else None,
+                    payload=payload if isinstance(payload, dict) else None,
+                    plans_dir=plans_dir,
                 )
+                out["issue_type"] = issue_type_for_signature
+                out["unresolved_signature"] = f"{issue_type_for_signature}::{completion_reason}"
                 if completion_ok:
                     _write_json(done / ticket_file.name, out)
                     _write_json(global_done / ticket_file.name, out)

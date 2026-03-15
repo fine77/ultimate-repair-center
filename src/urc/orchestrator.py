@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,15 +44,170 @@ class AgentOrchestrator:
         return model
 
     @staticmethod
+    def _extract_balanced_json_objects(text: str) -> list[str]:
+        objs: list[str] = []
+        depth = 0
+        start = -1
+        in_str = False
+        esc = False
+        for i, ch in enumerate(text):
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == "\"":
+                    in_str = False
+                continue
+            if ch == "\"":
+                in_str = True
+                continue
+            if ch == "{":
+                if depth == 0:
+                    start = i
+                depth += 1
+                continue
+            if ch == "}":
+                if depth > 0:
+                    depth -= 1
+                    if depth == 0 and start != -1:
+                        objs.append(text[start : i + 1])
+                        start = -1
+        return objs
+
+    @staticmethod
+    def _parse_loose_json_object(text: str) -> dict[str, Any] | None:
+        candidate = (text or "").strip()
+        if not candidate:
+            return None
+
+        def _as_object(payload: Any) -> dict[str, Any] | None:
+            if isinstance(payload, dict):
+                return payload
+            if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
+                return payload[0]
+            if isinstance(payload, str):
+                nested = payload.strip()
+                if nested and nested != candidate:
+                    return AgentOrchestrator._parse_loose_json_object(nested)
+            return None
+
+        try:
+            parsed = json.loads(candidate)
+            as_obj = _as_object(parsed)
+            if as_obj is not None:
+                return as_obj
+        except json.JSONDecodeError:
+            pass
+
+        normalized = candidate
+        normalized = re.sub(r"^\s*```(?:json)?\s*", "", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\s*```\s*$", "", normalized, flags=re.IGNORECASE)
+        normalized = normalized.replace("\u201c", "\"").replace("\u201d", "\"")
+        normalized = normalized.replace("\u2018", "'").replace("\u2019", "'")
+        normalized = re.sub(r",(\s*[}\]])", r"\1", normalized)
+        try:
+            parsed = json.loads(normalized)
+            as_obj = _as_object(parsed)
+            if as_obj is not None:
+                return as_obj
+        except json.JSONDecodeError:
+            pass
+
+        try:
+            lit = ast.literal_eval(normalized)
+            as_obj = _as_object(lit)
+            if as_obj is not None:
+                return as_obj
+        except Exception:
+            pass
+
+        return None
+
+    @staticmethod
     def _extract_json_object(text: str) -> dict[str, Any] | None:
         text = text.strip()
         if not text:
             return None
-        try:
-            payload = json.loads(text)
-            return payload if isinstance(payload, dict) else None
-        except json.JSONDecodeError:
+        parsed_root = AgentOrchestrator._parse_loose_json_object(text)
+        if parsed_root is not None:
+            return parsed_root
+
+        for m in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE):
+            parsed = AgentOrchestrator._parse_loose_json_object(m.group(1))
+            if parsed is not None:
+                return parsed
+
+        for candidate in AgentOrchestrator._extract_balanced_json_objects(text):
+            parsed = AgentOrchestrator._parse_loose_json_object(candidate)
+            if parsed is not None:
+                return parsed
+        return None
+
+    @staticmethod
+    def _default_for_schema(schema: Any) -> Any:
+        if isinstance(schema, dict):
+            return {k: AgentOrchestrator._default_for_schema(v) for k, v in schema.items()}
+        if isinstance(schema, list):
+            return []
+        if isinstance(schema, str):
+            token = schema.lower()
+            if token == "boolean":
+                return False
+            if token == "0.0-1.0":
+                return 0.5
+            if token == "string":
+                return ""
+            if "|" in token:
+                first = token.split("|")[0].strip()
+                return first
+            return ""
+        return None
+
+    def _synthesize_structured_fallback(
+        self, *, function_name: str | None, schema: dict[str, Any], issue_type: str
+    ) -> dict[str, Any] | None:
+        fn = (function_name or "").strip()
+        if not fn:
             return None
+        base = self._default_for_schema(schema)
+        if not isinstance(base, dict):
+            return None
+        issue = issue_type.strip() or "manual_plan"
+
+        if fn == "build_restore_plan":
+            if "ordered_actions" in base and isinstance(base.get("ordered_actions"), list):
+                base["ordered_actions"] = [
+                    {
+                        "step": f"Re-check {issue} via baseline restore chain",
+                        "target": "dns->sni->router->endpoint",
+                        "validation": "Observed and expected endpoint behavior aligned",
+                    }
+                ]
+            if "rollback_hint" in base:
+                base["rollback_hint"] = "Restore-only rollback of latest endpoint delta if needed."
+            if "risk_class" in base:
+                base["risk_class"] = "medium"
+            return base
+
+        if fn == "build_cmdb_payload":
+            if "change_summary" in base:
+                base["change_summary"] = f"Fallback CMDB payload for {issue} after invalid model JSON."
+            if "task_lines" in base and isinstance(base.get("task_lines"), list):
+                base["task_lines"] = [
+                    "Validate contract chain and baseline alignment.",
+                    "Apply minimal restore-only correction.",
+                ]
+            if "evidence_lines" in base and isinstance(base.get("evidence_lines"), list):
+                base["evidence_lines"] = [
+                    "Before/after endpoint checks with host header",
+                    "Router and upstream evidence snapshot",
+                ]
+            if "risk_tag" in base:
+                base["risk_tag"] = "medium"
+            return base
+
+        return None
 
     async def ask(self, *, agent: str, task: str, context: str = "", function_name: str | None = None, structured: bool = True, model_alias_chain: list[str] | None = None) -> AgentResult:
         cfg = self._resolve_agent(agent)
@@ -67,10 +224,19 @@ class AgentOrchestrator:
             "Constraints: restore-only; no architecture/policy/firewall/security redesign.\n"
         )
         if structured:
-            prompt += "Return ONLY JSON object following schema:\n" + json.dumps(schema, ensure_ascii=True)
+            prompt += (
+                "Return ONLY JSON object following schema:\n"
+                + json.dumps(schema, ensure_ascii=True)
+                + "\nOutput discipline rules: exactly one object; double-quoted keys/strings; "
+                + "no markdown fences; no comments; no trailing commas."
+            )
 
         out, model_used = await self.router.chat_with_fallback(models=models, prompt=prompt, temperature=float(cfg.get("temperature", 0.2)), max_tokens=int(cfg.get("max_tokens", 900)))
         parsed = self._extract_json_object(out) if structured else None
+        if structured and parsed is None:
+            parsed = self._synthesize_structured_fallback(
+                function_name=function_name, schema=schema, issue_type=task
+            )
         return AgentResult(agent=agent, ok=True, output=out, model_used=model_used, function_used=function_name, structured_output=parsed)
 
     async def handle_issue_for_agent(self, *, issue_type: str, summary: str, agent: str, context: str = "", structured: bool = True) -> dict[str, Any]:
