@@ -77,7 +77,7 @@ critical repair plans automatically.
   - `ops/systemd/planetonyx-autonomous-repair-dispatch.service`
   - `ops/systemd/planetonyx-autonomous-repair-dispatch.timer` (every 5 minutes)
 - Trigger source:
-  - parses `repair-health-check` output for `tailnet` / `ultimatevps` failures
+  - parses `repair-health-check` output for `tailnet` / `observability` / `crowdsec` failures
 - Action:
   - creates critical plans via `POST /v1/plan`
   - includes `executor` and sets `run_executor=true`, `apply=true`
@@ -119,8 +119,8 @@ Example:
 curl -sS -X POST http://127.0.0.1:8765/v1/plan \
   -H 'Content-Type: application/json' \
   -d '{
-    "issue_type":"ultimatevps_bad_gateway",
-    "summary":"ARR chain unstable after tunnel flap",
+    "issue_type":"observability_nodata",
+    "summary":"Grafana panel data stale for 20 minutes",
     "context":"keep IST-state; full-chain only",
     "requested_by":"manager",
     "target_agents":["sre_diagnoser","security_analyst","performance_analyst","documentarian"]
@@ -131,10 +131,10 @@ Helper:
 
 ```bash
 chmod 750 scripts/agent_plan_submit.sh
-./scripts/agent_plan_submit.sh "ARR chain unstable after tunnel flap"
+./scripts/agent_plan_submit.sh "Grafana panel data stale for 20 minutes"
 # executor-based self-repair trigger:
-ISSUE_TYPE=ultimatevps_bad_gateway TARGET_AGENTS=sre_diagnoser,executor,documentarian RUN_EXECUTOR=true APPLY=true PRIORITY=critical \
-  ./scripts/agent_plan_submit.sh "Auto repair: UltimateVPS degraded"
+ISSUE_TYPE=pbs_unreachable TARGET_AGENTS=sre_diagnoser,executor,documentarian RUN_EXECUTOR=true APPLY=true PRIORITY=critical \
+  ./scripts/agent_plan_submit.sh "Auto repair: PBS endpoint unreachable"
 ```
 
 ## Ollama Cloud Timeout/500 Shield
@@ -162,10 +162,10 @@ Knowledge base helper (SQLite-backed, shared for all workers):
 python3 -m src.cli kb-add \
   --source baseline \
   --category runbook \
-  --title "UltimateVPS Full Chain Rule" \
-  --content "Never redeploy single ARR app; always deploy full gluetun chain."
+  --title "Observability No-Data Restore Rule" \
+  --content "Validate scrape path, datasource, and endpoint contract before applying minimal restore fix."
 
-python3 -m src.cli kb-search --query "ultimatevps gluetun full chain" --limit 5
+python3 -m src.cli kb-search --query "observability nodata restore contract" --limit 5
 python3 -m src.cli kb-seed-baseline
 ```
 
@@ -224,7 +224,6 @@ This baseline is executed by:
 
 Mandatory morning checks:
 
-- repair domains (dry-run): `tailnet`, `ultimatevps`, `observability`, `crowdsec`
 - required VPS containers: `headscale`, `grafana`, `loki`, `influxdb`, `promtail`, `traefik`, `crowdsec`, `bouncer-traefik`
 - required systemd units: morning-check timer, agent export timer, control API service
 - required TCP endpoints: `127.0.0.1:3000`, `127.0.0.1:8080`, `10.188.50.9:8007`
@@ -370,14 +369,12 @@ Use a template quickly:
 
 ```bash
 cp runtime/inbox-templates/01-tailnet_degraded.json runtime/queues/sre_diagnoser/inbox/$(date -u +%Y%m%dT%H%M%SZ)-tailnet-01-sre_diagnoser.json
-cp runtime/inbox-templates/02-ultimatevps_bad_gateway.json runtime/queues/sre_diagnoser/inbox/$(date -u +%Y%m%dT%H%M%SZ)-ultimatevps-01-sre_diagnoser.json
 cp runtime/inbox-templates/03-observability_nodata.json runtime/queues/sre_diagnoser/inbox/$(date -u +%Y%m%dT%H%M%SZ)-observability-01-sre_diagnoser.json
 ```
 
 German templates are also available:
 
 - `runtime/inbox-templates/11-tailnet_degraded-de.json`
-- `runtime/inbox-templates/12-ultimatevps_bad_gateway-de.json`
 - `runtime/inbox-templates/13-observability_nodata-de.json`
 
 ## Agent Roles
@@ -428,7 +425,7 @@ python -m src.cli ask --agent sre_diagnoser --task "Check tailnet stability assu
 5. Run multi-agent triage:
 
 ```bash
-python -m src.cli triage --task "UltimateVPS bad gateway risk analysis"
+python -m src.cli triage --task "CrowdSec false-ban impact analysis"
 ```
 
 6. Run issue-profile workflow (recommended):
@@ -436,14 +433,12 @@ python -m src.cli triage --task "UltimateVPS bad gateway risk analysis"
 ```bash
 python -m src.cli agents
 python -m src.cli issues
-python -m src.cli issue --type ultimatevps_bad_gateway --summary "Bad gateway on qBittorrent route"
-python -m src.cli issue --type ultimatevps_bad_gateway --summary "Bad gateway on qBittorrent route" --structured
 ```
 
 7. Execute a safe repair action (single writer path, dry-run):
 
 ```bash
-python -m src.cli exec --action ultimatevps
+python -m src.cli exec --action observability
 ```
 
 `--apply` is blocked by policy (`IST-only restore mode`).
@@ -453,7 +448,6 @@ python -m src.cli exec --action ultimatevps
 The executor can only run these actions:
 
 - `tailnet`
-- `ultimatevps`
 - `observability`
 - `crowdsec`
 - `backup-all`
@@ -482,7 +476,6 @@ Apply mode is blocked by policy in IST-only restore mode.
 Defined in `configs/issue_profiles.json`:
 
 - `tailnet_degraded` -> `tailnet`
-- `ultimatevps_bad_gateway` -> `ultimatevps`
 - `observability_nodata` -> `observability`
 - `security_signal_spike` -> `repair-health-check`
 - `security_compliance_drift` -> no direct executor action (analysis-first)
@@ -506,7 +499,6 @@ Quick helper script for common restore tickets:
 
 ```bash
 scripts/worker_tools.sh reconcile --apply
-scripts/worker_tools.sh ultimatevps --apply
 scripts/worker_tools.sh observability --apply
 scripts/worker_tools.sh backup --apply
 ```
