@@ -207,6 +207,38 @@ class AgentOrchestrator:
                 base["risk_tag"] = "medium"
             return base
 
+        if fn == "build_incident_summary":
+            if "summary" in base:
+                base["summary"] = (
+                    f"Restore-only fallback summary for {issue} after invalid structured model output."
+                )
+            if "timeline" in base and isinstance(base.get("timeline"), list):
+                base["timeline"] = [
+                    "Detection confirmed from ticket context.",
+                    "Restore-chain validation executed (DNS->SNI->router->endpoint).",
+                    "Minimal baseline-safe remediation prepared.",
+                ]
+            if "resolution" in base:
+                base["resolution"] = "Pending/partial: continue restore-only remediation and re-validate."
+            return base
+
+        if fn == "find_bottleneck":
+            if "bottleneck" in base:
+                base["bottleneck"] = "network"
+            if "impact_scope" in base:
+                base["impact_scope"] = "stack"
+            if "confidence" in base:
+                base["confidence"] = 0.4
+            if "signals" in base and isinstance(base.get("signals"), list):
+                base["signals"] = [
+                    f"Fallback bottleneck analysis for {issue} due invalid structured model output.",
+                    "Conservative assumption: validate endpoint contract before tuning.",
+                ]
+            return base
+
+        if isinstance(base, dict):
+            return base
+
         return None
 
     async def ask(self, *, agent: str, task: str, context: str = "", function_name: str | None = None, structured: bool = True, model_alias_chain: list[str] | None = None) -> AgentResult:
