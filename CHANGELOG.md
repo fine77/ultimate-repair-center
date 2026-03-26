@@ -2,6 +2,11 @@
 
 All notable changes to URC are documented in this file.
 
+## [0.2.2] - 2026-03-26
+### Fixed
+- Worker compatibility for reconstructed legacy tickets: missing `issue_type`/`summary` is now recovered from the referenced `plan_id` payload when available.
+- Prevents false `ask ticket requires task` failures for issue-style tickets reconstructed without explicit mode fields.
+
 ## [0.1.0] - 2026-02-27
 ### Added
 - Initial project scaffold

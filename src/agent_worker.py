@@ -533,21 +533,38 @@ def run_worker(agent: str, base_dir: Path, interval_sec: int) -> int:
                     priority = "medium"
 
                 mode_raw = str(ticket.get("mode") or "").strip().lower()
-                has_issue_shape = bool(str(ticket.get("issue_type") or "").strip()) and bool(
-                    str(ticket.get("summary") or "").strip()
-                )
+                ticket_issue_type = str(ticket.get("issue_type") or "").strip()
+                ticket_summary = str(ticket.get("summary") or "").strip()
+                has_issue_shape = bool(ticket_issue_type) and bool(ticket_summary)
+                # Compatibility path for reconstructed/legacy tickets:
+                # recover missing issue fields from plan payload when possible.
+                plan_issue_type = ""
+                plan_summary = ""
+                if not has_issue_shape:
+                    plan_id = str(ticket.get("plan_id") or "").strip()
+                    if plan_id:
+                        try:
+                            plan = _read_json(plans_dir / f"{plan_id}.json")
+                            if isinstance(plan, dict):
+                                plan_issue_type = str(plan.get("issue_type") or "").strip()
+                                plan_summary = str(plan.get("summary") or "").strip()
+                        except Exception:
+                            pass
+                effective_issue_shape = has_issue_shape or (bool(plan_issue_type) and bool(plan_summary))
                 if mode_raw in {"issue", "ist_only_restore", "restore", "incident"}:
                     mode = "issue"
                 elif mode_raw in {"ask", "question", "task"}:
                     mode = "ask"
-                elif has_issue_shape and not str(ticket.get("task") or "").strip():
+                elif effective_issue_shape and not str(ticket.get("task") or "").strip():
                     # Defensive compatibility for malformed/reconstructed tickets.
                     mode = "issue"
                 else:
                     mode = "ask"
                 if mode == "issue":
-                    issue_type = str(ticket.get("issue_type") or "").strip()
-                    summary = str(ticket.get("summary") or "").strip()
+                    issue_type = ticket_issue_type or plan_issue_type
+                    summary = ticket_summary or plan_summary
+                    if not issue_type or not summary:
+                        raise ValueError("malformed_issue_ticket_missing_issue_type_or_summary")
                     context = str(ticket.get("context") or "").strip()
                     # Execution is only allowed via explicit ticket flags and only by executor worker.
                     run_executor = bool(ticket.get("run_executor", False)) and agent == "executor"

@@ -1,6 +1,6 @@
 [project]
 name = "ultimate-repair-center"
-version = "0.2.0"
+version = "0.2.2"
 description = "URC: restore-only multi-agent repair orchestration"
 readme = "README.md"
 requires-python = ">=3.10"
