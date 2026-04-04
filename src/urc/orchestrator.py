@@ -31,6 +31,22 @@ class AgentOrchestrator:
         self.issue_profiles = issues.get("issue_profiles", {})
         self.schemas = schemas
 
+    @staticmethod
+    def _default_function_for_agent(agent: str, functions: dict[str, Any]) -> str | None:
+        preferred: dict[str, str] = {
+            "sre_diagnoser": "build_restore_plan",
+            "security_analyst": "classify_signal",
+            "performance_analyst": "find_bottleneck",
+            "documentarian": "build_incident_summary",
+            "executor": "run_whitelisted_action",
+        }
+        pref = preferred.get(agent)
+        if pref and pref in functions:
+            return pref
+        if functions:
+            return next(iter(functions.keys()))
+        return None
+
     def _resolve_agent(self, name: str) -> dict[str, Any]:
         cfg = self.agents.get(name)
         if not cfg:
@@ -84,8 +100,10 @@ class AgentOrchestrator:
         def _as_object(payload: Any) -> dict[str, Any] | None:
             if isinstance(payload, dict):
                 return payload
-            if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
-                return payload[0]
+            if isinstance(payload, list):
+                for item in payload:
+                    if isinstance(item, dict):
+                        return item
             if isinstance(payload, str):
                 nested = payload.strip()
                 if nested and nested != candidate:
@@ -167,13 +185,19 @@ class AgentOrchestrator:
     def _synthesize_structured_fallback(
         self, *, function_name: str | None, schema: dict[str, Any], issue_type: str
     ) -> dict[str, Any] | None:
-        fn = (function_name or "").strip()
-        if not fn:
-            return None
         base = self._default_for_schema(schema)
         if not isinstance(base, dict):
             return None
+        fn = (function_name or "").strip()
         issue = issue_type.strip() or "manual_plan"
+        if not fn:
+            if "summary" in base and not base.get("summary"):
+                base["summary"] = f"Fallback structured output for {issue}"
+            if "risk" in base and not base.get("risk"):
+                base["risk"] = "medium"
+            if "confidence" in base and not base.get("confidence"):
+                base["confidence"] = 0.4
+            return base
 
         if fn == "build_restore_plan":
             if "ordered_actions" in base and isinstance(base.get("ordered_actions"), list):
@@ -245,9 +269,16 @@ class AgentOrchestrator:
         cfg = self._resolve_agent(agent)
         aliases = model_alias_chain or [cfg["model_alias"]]
         models = [self._resolve_model(a) for a in aliases]
+        selected_function = function_name
+        if structured and not selected_function:
+            selected_function = self._default_function_for_agent(
+                agent, cfg.get("functions", {})
+            )
         schema = self.schemas.get("default", {})
-        if function_name:
-            schema = self.schemas.get("agent_function", {}).get(f"{agent}.{function_name}", schema)
+        if selected_function:
+            schema = self.schemas.get("agent_function", {}).get(
+                f"{agent}.{selected_function}", schema
+            )
 
         prompt = (
             f"Role: {cfg.get('role','')}.\n"
@@ -267,9 +298,9 @@ class AgentOrchestrator:
         parsed = self._extract_json_object(out) if structured else None
         if structured and parsed is None:
             parsed = self._synthesize_structured_fallback(
-                function_name=function_name, schema=schema, issue_type=task
+                function_name=selected_function, schema=schema, issue_type=task
             )
-        return AgentResult(agent=agent, ok=True, output=out, model_used=model_used, function_used=function_name, structured_output=parsed)
+        return AgentResult(agent=agent, ok=True, output=out, model_used=model_used, function_used=selected_function, structured_output=parsed)
 
     async def handle_issue_for_agent(self, *, issue_type: str, summary: str, agent: str, context: str = "", structured: bool = True) -> dict[str, Any]:
         profile = self.issue_profiles.get(issue_type) or self.issue_profiles.get("manual_plan")
